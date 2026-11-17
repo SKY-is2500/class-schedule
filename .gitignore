@@ -1,0 +1,16 @@
+.gradle/
+.idea/
+.kotlin/
+.superpowers/
+.worktrees/
+build/
+local.properties
+**/build/
+*.iml
+.android-home/
+*-red.log
+*-green.log
+build-*.log
+qa/*.log
+qa/*.xml
+qa/*.png
