@@ -5,7 +5,11 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -32,11 +36,15 @@ import com.songkeyuan.schedule.ui.importing.ImportViewModel
 @Composable
 fun ScheduleApp(repository: ScheduleRepository) {
     val navController = rememberNavController()
+    var selectedCourseId by rememberSaveable { mutableStateOf<Long?>(null) }
+    val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val route = backStackEntry?.destination?.route
     val isEditor = route?.startsWith("editor") == true || route == "import"
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             if (!isEditor) {
                 NavigationBar {
@@ -50,7 +58,7 @@ fun ScheduleApp(repository: ScheduleRepository) {
                                     restoreState = true
                                 }
                             },
-                            icon = { Text(destination.symbol) },
+                            icon = { AppIcon(destination.icon) },
                             label = { Text(destination.label) },
                         )
                     }
@@ -71,7 +79,7 @@ fun ScheduleApp(repository: ScheduleRepository) {
                     onPreviousWeek = viewModel::previousWeek,
                     onNextWeek = viewModel::nextWeek,
                     onSelectDay = viewModel::selectWeekday,
-                    onCourseClick = { navController.navigate("editor/$it") },
+                    onCourseClick = { selectedCourseId=it },
                     onAddCourse = { navController.navigate("editor/0") },
                     onRetry = viewModel::retry,
                     onViewModeChange = viewModel::selectViewMode,
@@ -82,7 +90,7 @@ fun ScheduleApp(repository: ScheduleRepository) {
             composable(AppDestination.Pending.route) {
                 val viewModel: PendingViewModel = viewModel(factory = ViewModelFactory(repository))
                 val state by viewModel.uiState.collectAsStateWithLifecycle()
-                PendingScreen(state = state, onCourseClick = { navController.navigate("editor/$it") })
+                PendingScreen(state = state, onCourseClick = { selectedCourseId=it })
             }
             composable(AppDestination.Settings.route) {
                 val viewModel: SettingsViewModel = viewModel(factory = ViewModelFactory(repository))
@@ -104,7 +112,10 @@ fun ScheduleApp(repository: ScheduleRepository) {
             composable("import") {
                 val model: ImportViewModel=viewModel(factory=ViewModelFactory(repository))
                 val state by model.uiState.collectAsStateWithLifecycle()
-                LaunchedEffect(state.finished) { if(state.finished) navController.popBackStack() }
+                LaunchedEffect(state.finished) { if(state.finished) {
+                    navController.popBackStack()
+                    scope.launch { snackbar.showSnackbar("课表导入成功") }
+                } }
                 ImportScreen(state,model::readFile,model::confirmImport,onBack={navController.popBackStack()})
             }
             composable(
@@ -119,7 +130,10 @@ fun ScheduleApp(repository: ScheduleRepository) {
                 )
                 val state by viewModel.uiState.collectAsStateWithLifecycle()
                 LaunchedEffect(state.finished) {
-                    if (state.finished) navController.popBackStack()
+                    if (state.finished) {
+                        navController.popBackStack()
+                        scope.launch { snackbar.showSnackbar("课表已更新") }
+                    }
                 }
                 CourseEditorScreen(
                     state = state,
@@ -137,6 +151,14 @@ fun ScheduleApp(repository: ScheduleRepository) {
                     onConfirmDelete = viewModel::confirmDelete,
                 )
             }
+        }
+    }
+    selectedCourseId?.let { id ->
+        key(id) {
+            CourseDetailHost(repository,id,onDismiss={selectedCourseId=null},onEdit={
+                selectedCourseId=null
+                navController.navigate("editor/$id")
+            })
         }
     }
 }

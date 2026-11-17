@@ -3,6 +3,10 @@ package com.songkeyuan.schedule.ui
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.test.*
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
+import java.time.LocalDate
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.songkeyuan.schedule.data.*
 import com.songkeyuan.schedule.data.importing.ImportedTimetable
@@ -32,6 +36,32 @@ class ScheduleAndImportScreenTest {
         compose.runOnIdle { assertEquals(7L,opened) }
         compose.onNodeWithText("每日").performClick()
         compose.onNodeWithText("第3–4节 · A110").assertIsDisplayed()
+    }
+    @Test fun weeklyZoomSurvivesWeekNavigationAndViewSwitches() {
+        compose.setContent {
+            var state by remember { mutableStateOf(ScheduleUiState(isLoading=false,viewMode=ScheduleViewMode.Weekly)) }
+            MaterialTheme {
+                ScheduleScreen(state,{}, {state=state.copy(selectedWeek=state.selectedWeek+1)}, {}, {}, {}, {},onViewModeChange={state=state.copy(viewMode=it)})
+            }
+        }
+        compose.onNodeWithText("放大课表").performClick()
+        compose.onNodeWithText("显示全周").assertIsDisplayed()
+        compose.onNodeWithContentDescription("下一周").performClick()
+        compose.onNodeWithText("显示全周").assertIsDisplayed()
+        compose.onNodeWithText("每日").performClick()
+        compose.onNodeWithText("每周总览").performClick()
+        compose.onNodeWithText("显示全周").assertIsDisplayed()
+    }
+    @Test fun weeklyDatesRemainReadableAtDoubleFontSize() {
+        compose.setContent {
+            val density=LocalDensity.current.density
+            CompositionLocalProvider(LocalDensity provides Density(density,2f)) {
+                MaterialTheme {
+                    ScheduleScreen(ScheduleUiState(isLoading=false,viewMode=ScheduleViewMode.Weekly,weekMonday=LocalDate.of(2026,11,16)),{}, {}, {}, {}, {}, {})
+                }
+            }
+        }
+        compose.onNodeWithText("11/16").assertIsDisplayed().assertHeightIsAtLeast(24.dp)
     }
     @Test fun importNeedsExplicitConfirmationAndCanBeCancelled() {
         var saves=0
