@@ -1,4 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">我的课表</string>
+    <string name="widget_title">今日课表</string>
+    <string name="widget_description">查看今天的课程、上课时间和教室</string>
+    <string name="widget_date">%1$d月%2$d日</string>
+    <string name="widget_date_and_week">%1$s · 第%2$d周</string>
+    <string name="widget_course_details">%1$s–%2$s · %3$s</string>
+    <string name="widget_location_unknown">教室待定</string>
+    <string name="widget_empty">今天没有课程</string>
+    <string name="widget_outside_semester">今天不在教学周内</string>
+    <string name="widget_load_error">课表读取失败，点击打开应用</string>
+    <string name="widget_more">另有 %1$d 节课，点击查看</string>
 </resources>

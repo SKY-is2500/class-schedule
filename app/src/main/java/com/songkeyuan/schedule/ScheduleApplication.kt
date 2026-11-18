@@ -1,6 +1,7 @@
 package com.songkeyuan.schedule
 
 import android.app.Application
+import com.songkeyuan.schedule.widget.TodayScheduleWidget
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -15,6 +16,9 @@ class ScheduleApplication : Application() {
         container = AppContainer(this)
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             container.repository.ensureSeeded()
+            container.observeScheduleChanges().collect {
+                TodayScheduleWidget.refresh(this@ScheduleApplication)
+            }
         }
     }
 }

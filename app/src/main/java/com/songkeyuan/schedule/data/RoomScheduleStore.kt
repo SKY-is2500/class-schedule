@@ -26,6 +26,11 @@ class RoomScheduleStore(private val database: AppDatabase) : ScheduleStore {
     override suspend fun snapshotCourses(): List<CourseDetails> =
         dao.getAllCourses().map { it.toModel() }
 
+    internal suspend fun readScheduleFor(date: LocalDate): DailySchedule = database.withTransaction {
+        val semester = dao.getSettings()?.toModel() ?: DEFAULT_SETTINGS
+        scheduleForDate(date, semester, snapshotCourses())
+    }
+
     override suspend fun seedIfMissing() {
         database.withTransaction {
             if (dao.getMetaValue(SEED_VERSION_KEY) == null) {

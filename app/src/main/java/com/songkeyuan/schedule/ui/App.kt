@@ -9,6 +9,8 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -28,13 +30,14 @@ import com.songkeyuan.schedule.ui.pending.PendingScreen
 import com.songkeyuan.schedule.ui.pending.PendingViewModel
 import com.songkeyuan.schedule.ui.schedule.ScheduleScreen
 import com.songkeyuan.schedule.ui.schedule.ScheduleViewModel
+import com.songkeyuan.schedule.ui.schedule.ScheduleViewMode
 import com.songkeyuan.schedule.ui.settings.SettingsScreen
 import com.songkeyuan.schedule.ui.settings.SettingsViewModel
 import com.songkeyuan.schedule.ui.importing.ImportScreen
 import com.songkeyuan.schedule.ui.importing.ImportViewModel
 
 @Composable
-fun ScheduleApp(repository: ScheduleRepository) {
+fun ScheduleApp(repository: ScheduleRepository, widgetOpenRequests: Flow<Unit> = emptyFlow()) {
     val navController = rememberNavController()
     var selectedCourseId by rememberSaveable { mutableStateOf<Long?>(null) }
     val snackbar = remember { SnackbarHostState() }
@@ -42,6 +45,15 @@ fun ScheduleApp(repository: ScheduleRepository) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val route = backStackEntry?.destination?.route
     val isEditor = route?.startsWith("editor") == true || route == "import"
+
+    LaunchedEffect(navController, widgetOpenRequests) {
+        widgetOpenRequests.collect {
+            selectedCourseId = null
+            val scheduleEntry = navController.getBackStackEntry(AppDestination.Schedule.route)
+            scheduleEntry.savedStateHandle[OPEN_TODAY] = true
+            navController.popBackStack(AppDestination.Schedule.route, inclusive = false)
+        }
+    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
@@ -71,9 +83,17 @@ fun ScheduleApp(repository: ScheduleRepository) {
             startDestination = AppDestination.Schedule.route,
             modifier = Modifier.padding(padding),
         ) {
-            composable(AppDestination.Schedule.route) {
+            composable(AppDestination.Schedule.route) { entry ->
                 val viewModel: ScheduleViewModel = viewModel(factory = ViewModelFactory(repository))
                 val state by viewModel.uiState.collectAsStateWithLifecycle()
+                val openToday by entry.savedStateHandle.getStateFlow(OPEN_TODAY, false).collectAsStateWithLifecycle()
+                LaunchedEffect(openToday) {
+                    if (openToday) {
+                        viewModel.selectViewMode(ScheduleViewMode.Daily)
+                        viewModel.returnToToday()
+                        entry.savedStateHandle[OPEN_TODAY] = false
+                    }
+                }
                 ScheduleScreen(
                     state = state,
                     onPreviousWeek = viewModel::previousWeek,
@@ -162,3 +182,5 @@ fun ScheduleApp(repository: ScheduleRepository) {
         }
     }
 }
+
+private const val OPEN_TODAY = "open_today_from_widget"

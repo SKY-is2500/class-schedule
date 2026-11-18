@@ -6,6 +6,7 @@ import com.songkeyuan.schedule.data.RoomScheduleRepository
 import com.songkeyuan.schedule.data.RoomScheduleStore
 import com.songkeyuan.schedule.data.ScheduleRepository
 import com.songkeyuan.schedule.data.local.AppDatabase
+import java.time.LocalDate
 
 class AppContainer(context: Context) {
     private val database = Room.databaseBuilder(
@@ -14,5 +15,11 @@ class AppContainer(context: Context) {
         "course-schedule.db",
     ).build()
 
-    val repository: ScheduleRepository = RoomScheduleRepository(RoomScheduleStore(database))
+    private val store = RoomScheduleStore(database)
+    val repository: ScheduleRepository = RoomScheduleRepository(store)
+
+    internal fun observeScheduleChanges() =
+        database.invalidationTracker.createFlow("courses", "meetings", "semester_settings")
+
+    internal suspend fun readScheduleFor(date: LocalDate) = store.readScheduleFor(date)
 }

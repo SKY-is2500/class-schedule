@@ -13,13 +13,7 @@ import com.songkeyuan.schedule.data.importing.ImportedTimetable
 
 class RoomScheduleRepository(private val store: ScheduleStore) : ScheduleRepository {
     override fun observeDay(week: Int, weekday: Int): Flow<List<ScheduledCourse>> =
-        store.observeCourses().map { courses ->
-            courses.flatMap { details ->
-                details.meetings
-                    .filter { it.weekday == weekday && it.weekMask and (1L shl (week - 1)) != 0L }
-                    .map { ScheduledCourse(details.course, it) }
-            }.sortedWith(compareBy({ it.meeting.startPeriod }, { it.meeting.endPeriod }, { it.course.name }))
-        }
+        store.observeCourses().map { it.scheduledOn(week, weekday) }
 
     override fun observePending(): Flow<List<Course>> =
         store.observeCourses().map { courses ->
