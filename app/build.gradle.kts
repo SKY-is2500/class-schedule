@@ -12,8 +12,8 @@ android {
         applicationId = "com.songkeyuan.schedule"
         minSdk = 26
         targetSdk = 36
-        versionCode = 4
-        versionName = "V1.4"
+        versionCode = 5
+        versionName = "V1.5"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

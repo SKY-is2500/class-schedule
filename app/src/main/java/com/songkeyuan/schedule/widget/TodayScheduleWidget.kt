@@ -6,9 +6,13 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.os.Build
+import android.os.Bundle
 import android.util.Log
+import android.util.SizeF
 import android.view.View
 import android.widget.RemoteViews
+import androidx.core.os.BundleCompat
 import com.songkeyuan.schedule.MainActivity
 import com.songkeyuan.schedule.R
 import com.songkeyuan.schedule.ScheduleApplication
@@ -38,12 +42,21 @@ class TodayScheduleWidget : AppWidgetProvider() {
         refreshFromBroadcast(context)
     }
 
-    private fun refreshFromBroadcast(context: Context) {
+    override fun onAppWidgetOptionsChanged(
+        context: Context,
+        appWidgetManager: AppWidgetManager,
+        appWidgetId: Int,
+        newOptions: Bundle,
+    ) {
+        refreshFromBroadcast(context, appWidgetId)
+    }
+
+    private fun refreshFromBroadcast(context: Context, appWidgetId: Int? = null) {
         val pendingResult = goAsync()
         val application = context.applicationContext as ScheduleApplication
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                withTimeoutOrNull(8_000L) { refresh(application) }
+                withTimeoutOrNull(8_000L) { refresh(application, appWidgetId) }
             } finally {
                 pendingResult.finish()
             }
@@ -54,9 +67,10 @@ class TodayScheduleWidget : AppWidgetProvider() {
         private val updateLock = Mutex()
         private val classTimeFormat = DateTimeFormatter.ofPattern("HH:mm", Locale.ROOT)
 
-        internal suspend fun refresh(application: ScheduleApplication) = updateLock.withLock {
+        internal suspend fun refresh(application: ScheduleApplication, appWidgetId: Int? = null) = updateLock.withLock {
             val manager = AppWidgetManager.getInstance(application)
-            val ids = manager.getAppWidgetIds(ComponentName(application, TodayScheduleWidget::class.java))
+            val boundIds = manager.getAppWidgetIds(ComponentName(application, TodayScheduleWidget::class.java))
+            val ids = if (appWidgetId == null) boundIds else boundIds.filter { it == appWidgetId }.toIntArray()
             if (ids.isEmpty()) return@withLock
 
             val today = LocalDate.now()
@@ -68,10 +82,50 @@ class TodayScheduleWidget : AppWidgetProvider() {
                 Log.w("TodayScheduleWidget", "Could not load today's schedule", error)
                 null
             }
-            manager.updateAppWidget(ids, render(application, today, schedule))
+            for (id in ids) {
+                val options = manager.getAppWidgetOptions(id)
+                manager.updateAppWidget(id, sizedViews(application, today, schedule, options))
+            }
         }
 
-        private fun render(context: Context, date: LocalDate, schedule: DailySchedule?): RemoteViews {
+        private fun sizedViews(
+            context: Context,
+            date: LocalDate,
+            schedule: DailySchedule?,
+            options: Bundle,
+        ): RemoteViews {
+            val fontScale = context.resources.configuration.fontScale
+            val courseCount = schedule?.courses.orEmpty().size
+            fun renderFor(size: SizeF): RemoteViews {
+                val layout = WidgetLayout.forSize(size.width, size.height, fontScale, courseCount)
+                return render(context, date, schedule, layout)
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val sizes = BundleCompat.getParcelableArrayList(
+                    options, AppWidgetManager.OPTION_APPWIDGET_SIZES, SizeF::class.java,
+                ).orEmpty().filter { it.width > 0f && it.height > 0f }
+                if (sizes.isNotEmpty()) return RemoteViews(sizes.associateWith(::renderFor))
+            }
+
+            fun dimension(key: String, fallback: Float): Float =
+                options.getInt(key).takeIf { it > 0 }?.toFloat() ?: fallback
+            val minWidth = dimension(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 220f)
+            val minHeight = dimension(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 190f)
+            val maxWidth = dimension(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH, minWidth)
+            val maxHeight = dimension(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, minHeight)
+            return RemoteViews(
+                renderFor(SizeF(maxWidth, minHeight)),
+                renderFor(SizeF(minWidth, maxHeight)),
+            )
+        }
+
+        private fun render(
+            context: Context,
+            date: LocalDate,
+            schedule: DailySchedule?,
+            layout: WidgetLayout,
+        ): RemoteViews {
             val widget = RemoteViews(context.packageName, R.layout.today_schedule_widget)
             widget.removeAllViews(R.id.widget_courses)
             widget.setViewVisibility(R.id.widget_more, View.GONE)
@@ -79,7 +133,11 @@ class TodayScheduleWidget : AppWidgetProvider() {
             val week = schedule?.week
             widget.setTextViewText(
                 R.id.widget_date,
-                if (week == null) dateLabel else context.getString(R.string.widget_date_and_week, dateLabel, week),
+                if (week != null && layout.showTeachingWeek) {
+                    context.getString(R.string.widget_date_and_week, dateLabel, week)
+                } else {
+                    dateLabel
+                },
             )
             val openToday = Intent(context, MainActivity::class.java)
                 .setAction(MainActivity.ACTION_OPEN_TODAY)
@@ -102,8 +160,7 @@ class TodayScheduleWidget : AppWidgetProvider() {
             }
 
             val courses = checkNotNull(schedule).courses
-            val maxVisible = if (context.resources.configuration.fontScale >= 1.4f) 2 else 3
-            for ((course, meeting) in courses.take(maxVisible)) {
+            for ((course, meeting) in courses.take(layout.visibleCourses)) {
                 val time = PeriodTime.forPeriods(meeting.startPeriod, meeting.endPeriod)
                 val location = meeting.location.ifBlank { context.getString(R.string.widget_location_unknown) }
                 val row = RemoteViews(context.packageName, R.layout.today_schedule_widget_course)
@@ -120,8 +177,8 @@ class TodayScheduleWidget : AppWidgetProvider() {
                 widget.addView(R.id.widget_courses, row)
             }
             widget.setViewVisibility(R.id.widget_status, View.GONE)
-            val remaining = courses.size - maxVisible
-            if (remaining > 0) {
+            if (layout.showOverflowCount) {
+                val remaining = courses.size - layout.visibleCourses
                 widget.setTextViewText(R.id.widget_more, context.getString(R.string.widget_more, remaining))
                 widget.setViewVisibility(R.id.widget_more, View.VISIBLE)
             }
